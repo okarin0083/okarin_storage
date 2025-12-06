@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>TB Pager ver0.38</title>
+  <title>ストーリーテキストメーカー Next（カギカッコ＋ページガイド）</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     :root {
@@ -309,7 +309,7 @@
   </style>
 </head>
 <body>
-  <h1>TB Pager ver0.38</h1>
+  <h1>ストーリーテキストメーカー Next</h1>
   <div class="desc">
     ティラノビルダー用のストーリーテキストを、<b>ページ単位のカギカッコ</b>＋<b>行数ごとの自動[p]</b>＋<b>ページガイド表示</b>付きで作成します。<br>
     Windowsメイン運用を想定した、軽量テキスト専用エディタ版です。
@@ -714,6 +714,7 @@
       return text;
     }
 
+    
     function processText(src) {
       const per = getLinesPerPage();
       const quoteStart = quoteStartInput.value;
@@ -723,30 +724,76 @@
       const out = [];
 
       let currentSpeaker = null;
-      let speechCount = 0;      // 各キャラごとのセリフ行カウント（見た目行ベース）
-      let pageLines = [];       // 現在のページ内のセリフ＋空行など
-      let pageOutsideMarks = []; // 台詞外に出す記号など
-
-      function flushPage(addPageBreak) {
-        if (pageLines.length > 0) {
-          const blockText = pageLines.join('\n');
-          const wrapped =
-            (quoteStart || '') +
-            blockText +
-            (quoteEnd || '');
-          const mark = getPageMark();
-          const extra = pageOutsideMarks.join('');
-          out.push(wrapped + extra + (addPageBreak && mark ? mark : ''));
-          pageLines = [];
-          pageOutsideMarks = [];
-        }
-      }
 
       const cpl = getCharsPerLine();
       const outsideRules = replaceRules.filter(rule => rule.enabled && rule.from && rule.outside);
 
+      // 段落をページ単位のセリフブロックに変換する
+      function flushParagraph(paragraphLines) {
+        if (!paragraphLines || paragraphLines.length === 0) return;
+
+        const pages = [];
+        let speechCount = 0;
+        let currentLines = [];
+        let currentOutside = [];
+
+        for (let i = 0; i < paragraphLines.length; i++) {
+          let raw = paragraphLines[i];
+
+          // 台詞外ルールを適用（このページの外側に出す）
+          outsideRules.forEach(rule => {
+            try {
+              const re = new RegExp(escapeRegExp(rule.from), 'g');
+              raw = raw.replace(re, () => {
+                currentOutside.push(rule.to || '');
+                return '';
+              });
+            } catch (e) {
+              // 無効な正規表現は無視
+            }
+          });
+
+          currentLines.push(raw);
+
+          let w = visualWidth(raw);
+          if (w <= 0) w = 1;
+          const visualLinesThis = cpl ? Math.max(1, Math.ceil(w / cpl)) : 1;
+          if (per) {
+            speechCount += visualLinesThis;
+            if (speechCount >= per) {
+              pages.push({ lines: currentLines, outside: currentOutside });
+              currentLines = [];
+              currentOutside = [];
+              speechCount = 0;
+            }
+          }
+        }
+
+        if (currentLines.length > 0) {
+          pages.push({ lines: currentLines, outside: currentOutside });
+        }
+
+        const mark = getPageMark();
+        pages.forEach(page => {
+          const blockText = page.lines.join('\n');
+          const wrapped =
+            (quoteStart || '') +
+            blockText +
+            (quoteEnd || '');
+          const extra = page.outside.join('');
+          let full = wrapped + extra;
+          if (per && mark) {
+            full += mark;
+          }
+          out.push(full);
+        });
+      }
+
+      // 空行で段落を区切りながら全体を走査
+      let paragraphLines = [];
+
       for (let i = 0; i < lines.length; i++) {
-        let raw = lines[i];
+        const raw = lines[i];
         const trimmed = raw.trim();
 
         const isSpeaker = trimmed.startsWith('#');
@@ -755,56 +802,46 @@
         const isEmpty = trimmed === '';
 
         if (isSpeaker) {
-          // キャラ切り替え：現在のページを閉じ、カウントリセット
-          flushPage(false);
+          // 段落を閉じてから話者切り替え
+          flushParagraph(paragraphLines);
+          paragraphLines = [];
           currentSpeaker = trimmed.slice(1).trim() || null;
-          speechCount = 0;
-          out.push(raw); // #キャラ名 行はそのまま出力
+          out.push(raw); // #キャラ名 行はそのまま
         } else if (isTag || isComment) {
-          // タグ・コメントの前にページを閉じる
-          flushPage(false);
+          // 段落を閉じてからタグ/コメントを出力
+          flushParagraph(paragraphLines);
+          paragraphLines = [];
           out.push(raw);
         } else {
-          // セリフまたは空行（空白行も1行としてカウント）
-          if (currentSpeaker == null && !isEmpty) {
-            // キャラ名なしナレーションもページ対象に含める
-          }
-
-          // 台詞外扱いのルールを先に処理（行末の記号などを外に出す想定）
-          outsideRules.forEach(rule => {
-            try {
-              const re = new RegExp(escapeRegExp(rule.from), 'g');
-              raw = raw.replace(re, () => {
-                pageOutsideMarks.push(rule.to || '');
-                return '';
-              });
-            } catch (e) {
-              // 無効な正規表現は無視
-            }
-          });
-
-          pageLines.push(raw);
-
-          let w = visualWidth(raw);
-          if (w <= 0) w = 1;
-          const visualLinesThis = cpl ? Math.max(1, Math.ceil(w / cpl)) : 1;
-          speechCount += visualLinesThis;
-
-          if (per && speechCount > 0 && speechCount % per === 0) {
-            // ちょうど行数に達したとき、そのページを閉じて[p]
-            flushPage(true);
+          // セリフまたは空行（空白行も段落区切りとみなす）
+          if (isEmpty) {
+            flushParagraph(paragraphLines);
+            paragraphLines = [];
+          } else {
+            paragraphLines.push(raw);
           }
         }
       }
 
-      // 末尾のページを閉じる（行数未満なら[p]は付けない）
-      flushPage(false);
+      // ファイル末尾の段落を処理
+      flushParagraph(paragraphLines);
+
+      // 最後のセリフブロックの末尾だけ [p] を外す
+      const mark = getPageMark();
+      if (mark) {
+        for (let i = out.length - 1; i >= 0; i--) {
+          const s = out[i];
+          if (typeof s === 'string' && s.endsWith(mark)) {
+            out[i] = s.slice(0, -mark.length);
+            break;
+          }
+        }
+      }
 
       let result = out.join('\n');
       result = applyReplaceRules(result);
       return result;
     }
-
     // ===== 簡易プレビュー =====
     function buildPreview(text) {
       const lines = splitLines(text);
