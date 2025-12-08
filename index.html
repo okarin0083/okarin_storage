@@ -317,8 +317,10 @@
 <body>
   <h1>TB Pager ver0.391</h1>
   <div class="desc">
-    ティラノビルダー用のストーリーテキストを、<b>ページ単位のカギカッコ</b>＋<b>行数ごとの自動[p]</b>＋<b>ページガイド表示</b>付きで作成します。<br>
-    Windowsメイン運用を想定した、軽量テキスト専用エディタ版です。
+    自分が入力しやすいようにカスタマイズした記号で<br>
+    ティラノビルダーのストーリー用テキストを整形してくれるツールです。<br>
+    メインとしては[p]（ページ送り）挿入、「」付け・行数調整がメイン軽量Webアプリです。<br>
+    Windowsでの運用をメインに想定した、軽量テキスト専用エディタ版です。
   </div>
 
   <div class="layout">
@@ -335,10 +337,10 @@
           <div id="inputGuideLayer" class="editor-guide-layer"></div>
           <div id="wrapGuide" class="wrap-guide-layer"></div>
           <textarea id="input" placeholder="#ヒロイン名
-やぁ、こんにちは。
+「＃」を入れるとキャラ名一覧が出るわよ
 
 #主人公
-今日はいい天気ですね。"></textarea>
+一番下の「候補キャラ」キャラを登録できるよ"></textarea>
         </div>
         <div class="counter-row">
           <div>入力欄</div>
@@ -418,7 +420,7 @@
           <span class="badge">任意記号 → 任意文字列</span>
         </div>
         <div class="subtext">
-          ページ制御とは独立した任意の置換を行えます。初期状態ではルールは登録されていません。
+          設定した記号を「入力テキスト」で入力し、変換すると出力文字列に変換されます。<br>
         </div>
         <table style="margin-top:6px;">
           <thead>
