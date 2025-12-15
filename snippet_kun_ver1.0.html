@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>スニペットくんver1.0</title>
+
+<style>
+body {
+  font-family: sans-serif;
+  background:#1e1e1e;
+  color:#ddd;
+  padding:20px;
+}
+h1 { border-bottom:1px solid #555; }
+
+.category-title {
+  font-size:1.3em;
+  margin-left:20px;
+  margin-bottom:4px;
+}
+
+table {
+  width:max-content;
+  border-collapse:collapse;
+  margin:0 auto 8px auto;
+}
+th,td {
+  border:1px solid #444;
+  padding:6px 8px;
+  white-space:nowrap;
+}
+th { background:#2a2a2a; }
+
+input, textarea {
+  width:100%;
+  box-sizing:border-box;
+  background:#252526;
+  color:#fff;
+  border:1px solid #555;
+  resize:vertical;
+}
+
+button { padding:2px 8px; margin-left:4px; }
+
+.control { text-align:center; margin-bottom:12px; }
+
+.add-row {
+  text-align:right;
+  margin:0 auto 16px auto;
+  width:max-content;
+}
+
+pre { background:#111; padding:10px; }
+</style>
+</head>
+
+<body>
+
+<h1>スニペットくんver1.0</h1>
+
+<div class="control">
+  <button id="editToggle">編集モード：OFF</button>
+  <button onclick="saveData()">保存</button>
+  <button onclick="loadData()">読込</button>
+</div>
+
+<div id="tables"></div>
+
+<div class="control">
+  <button onclick="generate()">一括生成</button>
+  <button onclick="copyOutput()">一括コピー</button>
+</div>
+
+<h2>
+  <input class="lockable category-title" value="出力結果" disabled>
+</h2>
+<pre id="output"></pre>
+
+<script>
+/* ===============================
+   編集モード
+================================ */
+let editMode = false;
+const editBtn = document.getElementById("editToggle");
+editBtn.onclick = () => {
+  editMode = !editMode;
+  editBtn.textContent = editMode ? "編集モード：ON" : "編集モード：OFF";
+  document.querySelectorAll(".lockable").forEach(e=>{
+    e.disabled = !editMode;
+  });
+};
+
+/* ===============================
+   固定データ（55項目）
+================================ */
+const controls = [
+  { title:"アクター名表示", body:"\\N[$1]", desc:"アクターn番の名前を表示" },
+  { title:"変数表示", body:"\\V[$1]", desc:"変数n番の値を表示" },
+  { title:"文字色変更", body:"\\C[$1]", desc:"文字色変更" },
+  { title:"アイコン表示", body:"\\I[$1]", desc:"アイコン表示" },
+  { title:"入力待ち", body:"\\!", desc:"クリック待ち" },
+  { title:"短いウェイト", body:"\\.", desc:"短いウェイト" },
+  { title:"長いウェイト", body:"\\|", desc:"長いウェイト" },
+  { title:"高速表示開始", body:"\\>", desc:"高速表示開始" },
+  { title:"高速表示解除", body:"\\<", desc:"高速表示解除" },
+  { title:"文字拡大", body:"\\{", desc:"文字を大きく" },
+  { title:"文字縮小", body:"\\}", desc:"文字を小さく" },
+  { title:"ウィンドウ自動クローズ", body:"\\^", desc:"表示後に自動で閉じる" }
+];
+
+const tags = [
+  { title:"選択肢開始", body:"<ShowChoices>", desc:"選択肢表示開始" },
+  { title:"選択肢分岐", body:"<When:$1>", desc:"選択肢分岐" },
+  { title:"キャンセル分岐", body:"<WhenCancel>", desc:"キャンセル分岐" },
+  { title:"選択肢終了", body:"<End>", desc:"選択肢終了" },
+  { title:"スクロール文章開始", body:"<ShowScrollingText:$1,$2>", desc:"スクロール文章開始" },
+  { title:"スクロール文章終了", body:"</ShowScrollingText>", desc:"スクロール文章終了" },
+  { title:"スイッチON", body:"<Switch:$1,ON>", desc:"スイッチON" },
+  { title:"スイッチOFF", body:"<Switch:$1,OFF>", desc:"スイッチOFF" },
+  { title:"セルフスイッチON", body:"<SelfSwitch:$1,ON>", desc:"セルフスイッチON" },
+  { title:"セルフスイッチOFF", body:"<SelfSwitch:$1,OFF>", desc:"セルフスイッチOFF" },
+  { title:"変数代入", body:"<Set:$1,$2>", desc:"変数代入" },
+  { title:"変数加算", body:"<Add:$1,$2>", desc:"変数加算" },
+  { title:"変数減算", body:"<Sub:$1,$2>", desc:"変数減算" },
+  { title:"変数乗算", body:"<Mul:$1,$2>", desc:"変数乗算" },
+  { title:"変数除算", body:"<Div:$1,$2>", desc:"変数除算" },
+  { title:"変数剰余", body:"<Mod:$1,$2>", desc:"変数剰余" },
+  { title:"ラベル設置", body:"<Label:$1>", desc:"ラベル設置" },
+  { title:"ラベルジャンプ", body:"<GotoLabel:$1>", desc:"ラベルジャンプ" },
+  { title:"ループ中断", body:"<BreakLoop>", desc:"ループ中断" },
+  { title:"イベント中断", body:"<AbortEvent>", desc:"イベント処理中断" },
+  { title:"コモンイベント", body:"<CommonEvent:$1>", desc:"コモンイベント呼び出し" },
+  { title:"タイマー開始", body:"<Timer:START,$1>", desc:"タイマー開始" },
+  { title:"タイマー停止", body:"<Timer:STOP>", desc:"タイマー停止" },
+  { title:"スクリプト実行", body:"<Script:$1>", desc:"スクリプト実行" },
+  { title:"プラグインコマンド", body:"<PluginCommand:$1>", desc:"MVプラグインコマンド" },
+  { title:"プラグインコマンドMZ", body:"<PluginCommandMZ:$1>", desc:"MZプラグインコマンド" },
+  { title:"所持金操作", body:"<Gold:$1>", desc:"所持金操作" },
+  { title:"アイテム増減", body:"<Item:$1,$2>", desc:"アイテム増減" },
+  { title:"武器増減", body:"<Weapon:$1,$2>", desc:"武器増減" },
+  { title:"防具増減", body:"<Armor:$1,$2>", desc:"防具増減" },
+  { title:"ピクチャ表示", body:"<ShowPicture:$1,$2,$3,$4,$5,$6,$7,$8>", desc:"ピクチャ表示" },
+  { title:"ピクチャ移動", body:"<MovePicture:$1,$2,$3,$4,$5,$6,$7,$8>", desc:"ピクチャ移動" },
+  { title:"ピクチャ消去", body:"<ErasePicture:$1>", desc:"ピクチャ消去" },
+  { title:"フェードアウト", body:"<FadeOut>", desc:"フェードアウト" },
+  { title:"フェードイン", body:"<FadeIn>", desc:"フェードイン" },
+  { title:"BGM再生", body:"<PlayBGM:$1,$2,$3,$4>", desc:"BGM再生" },
+  { title:"BGM停止", body:"<FadeOutBGM:$1>", desc:"BGM停止" },
+  { title:"SE再生", body:"<PlaySE:$1>", desc:"SE再生" },
+  { title:"SE停止", body:"<StopSE>", desc:"SE停止" },
+  { title:"メニュー表示", body:"<MenuScreen>", desc:"メニュー画面表示" },
+  { title:"セーブ画面", body:"<SaveScreen>", desc:"セーブ画面表示" },
+  { title:"ゲームオーバー", body:"<GameOver>", desc:"ゲームオーバー" },
+  { title:"タイトルへ戻る", body:"<ReturnToTitle>", desc:"タイトルへ戻る" }
+];
+
+/* ===============================
+   表生成
+================================ */
+const container = document.getElementById("tables");
+renderTable("制御文字（MZ）", controls);
+renderTable("Text2Frame タグ", tags);
+
+function renderTable(title,data){
+  const h2=document.createElement("h2");
+  const ti=document.createElement("input");
+  ti.value=title;
+  ti.className="lockable category-title";
+  ti.disabled=true;
+  h2.appendChild(ti);
+  container.appendChild(h2);
+
+  const table=document.createElement("table");
+  table.innerHTML=`
+    <tr>
+      <th>項目</th>
+      <th>表示説明単語</th>
+      <th>呼出文字列</th>
+      <th>短縮ワード</th>
+      <th></th>
+    </tr>`;
+  data.forEach(d=>addRow(table,d));
+  container.appendChild(table);
+
+  const add=document.createElement("div");
+  add.className="add-row";
+  const b=document.createElement("button");
+  b.textContent="＋ 行追加";
+  b.onclick=()=>addRow(table,{});
+  add.appendChild(b);
+  container.appendChild(add);
+}
+
+function addRow(table,d){
+  const tr=document.createElement("tr");
+  tr.innerHTML=`
+    <td><textarea class="lockable" disabled>${d.title||""}</textarea></td>
+    <td><textarea class="lockable" disabled>${d.desc||""}</textarea></td>
+    <td><textarea class="lockable" disabled>${d.body||""}</textarea></td>
+    <td><input></td>
+    <td><button onclick="this.closest('tr').remove()">削除</button></td>`;
+  table.appendChild(tr);
+
+  /* ★ Enter移動を必ずバインド */
+  tr.querySelectorAll("input,textarea").forEach(bindKey);
+}
+
+/* ===============================
+   Enter / Shift+Enter 制御
+================================ */
+function bindKey(el){
+  el.addEventListener("keydown",e=>{
+    if(!editMode) return;
+    if(e.key!=="Enter") return;
+    if(e.isComposing) return;
+    if(e.shiftKey) return; // 改行
+    e.preventDefault();
+    moveDown(el);
+  });
+}
+
+function moveDown(el){
+  const td=el.closest("td");
+  const tr=el.closest("tr");
+  const col=[...tr.children].indexOf(td);
+  const next=tr.nextElementSibling;
+  if(!next) return;
+  const t=next.children[col].querySelector("input,textarea");
+  if(t && !t.disabled) t.focus();
+}
+
+/* ===============================
+   保存 / 読込
+================================ */
+function saveData(){
+  const s=[...document.querySelectorAll("table")].map(t=>
+    [...t.querySelectorAll("tr")].slice(1).map(r=>
+      [...r.querySelectorAll("input,textarea")].map(i=>i.value)
+    )
+  );
+  localStorage.setItem("mz_snippet",JSON.stringify(s));
+  alert("保存しました");
+}
+
+function loadData(){
+  const r=localStorage.getItem("mz_snippet");
+  if(!r) return alert("保存データなし");
+  const s=JSON.parse(r);
+  const tables=document.querySelectorAll("table");
+  s.forEach((rows,i)=>{
+    rows.forEach((vals,r)=>{
+      if(!tables[i].rows[r+1]) addRow(tables[i],{});
+      [...tables[i].rows[r+1].querySelectorAll("input,textarea")]
+        .forEach((e,c)=>e.value=vals[c]||"");
+    });
+  });
+  alert("読込しました");
+}
+
+/* ===============================
+   JSON生成
+================================ */
+function generate(){
+  const out={};
+  document.querySelectorAll("table tr").forEach((tr,i)=>{
+    if(i===0) return;
+    const c=tr.querySelectorAll("td");
+    if(!c.length) return;
+    const t=c[0].querySelector("textarea").value;
+    const d=c[1].querySelector("textarea").value;
+    const b=c[2].querySelector("textarea").value;
+    const p=c[3].querySelector("input").value;
+    if(!p) return;
+    out[t]={ prefix:p, body:[b], description:d };
+  });
+  output.textContent=JSON.stringify(out,null,2);
+}
+
+function copyOutput(){
+  navigator.clipboard.writeText(output.textContent)
+    .then(()=>alert("コピーしました"));
+}
+</script>
+
+</body>
+</html>
