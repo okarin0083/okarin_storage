@@ -1,4 +1,4 @@
-# スニペット登録表 ver0.5
+# スニペットくん ver1.0
 https://okarin0083.github.io/tb-pager/
 
 VSCodeのスニペット（辞書登録機能みたいなの）の
